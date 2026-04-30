@@ -59,7 +59,54 @@ import { initChannelAdapters, teardownChannelAdapters, getChannelAdapter } from 
 async function main(): Promise<void> {
   log.info('NanoClaw starting');
 
-  // 0. Circuit breaker — backoff on rapid restarts
+  // 0a. Single-instance lock — if another NanoClaw is running for this
+  // DATA_DIR, refuse to start. Two host processes share container DBs but
+  // each has its own in-process activeContainers / wakePromises maps, so
+  // every wake spawns a fresh container per process — N hosts → N
+  // containers per inbound message. The session DB is the only shared
+  // state, so we lock by PID file inside DATA_DIR.
+  const fs = await import('fs');
+  const pidFile = path.join(DATA_DIR, 'nanoclaw.pid');
+  if (fs.existsSync(pidFile)) {
+    const oldPidStr = fs.readFileSync(pidFile, 'utf-8').trim();
+    const oldPid = Number.parseInt(oldPidStr, 10);
+    if (Number.isFinite(oldPid)) {
+      try {
+        // Signal 0 = check if process exists without sending a real signal.
+        process.kill(oldPid, 0);
+        log.error(
+          `Another NanoClaw instance is running (pid=${oldPid}). Refusing to start. ` +
+            `Stop it first or remove ${pidFile} if it is stale.`,
+        );
+        process.exit(1);
+      } catch {
+        // ESRCH — process is dead, fall through and overwrite the file.
+        log.warn('Stale PID file found, overwriting', { pidFile, oldPid });
+      }
+    }
+  }
+  fs.writeFileSync(pidFile, String(process.pid));
+  // Best-effort cleanup on any exit. Not foolproof (SIGKILL leaves it),
+  // but the staleness check above handles that case on next startup.
+  const removePidFile = () => {
+    try {
+      const current = fs.readFileSync(pidFile, 'utf-8').trim();
+      if (current === String(process.pid)) fs.unlinkSync(pidFile);
+    } catch {
+      // ignore
+    }
+  };
+  process.on('exit', removePidFile);
+  process.on('SIGINT', () => {
+    removePidFile();
+    process.exit(130);
+  });
+  process.on('SIGTERM', () => {
+    removePidFile();
+    process.exit(143);
+  });
+
+  // 0b. Circuit breaker — backoff on rapid restarts
   await enforceStartupBackoff();
 
   // 1. Init central DB
