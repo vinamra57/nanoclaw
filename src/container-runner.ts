@@ -435,6 +435,15 @@ async function buildContainerArgs(
 ): Promise<string[]> {
   const args: string[] = ['run', '--rm', '--name', containerName, '--label', CONTAINER_INSTALL_LABEL];
 
+  // Resource caps — keep one student's container from starving the
+  // others on a shared host. Override with NANOCLAW_CONTAINER_MEMORY
+  // (e.g. "4g") if the agent legitimately needs more headroom.
+  const memCap = process.env.NANOCLAW_CONTAINER_MEMORY ?? '2g';
+  args.push('--memory', memCap, '--memory-swap', memCap);
+  if (process.env.NANOCLAW_CONTAINER_CPUS) {
+    args.push('--cpus', process.env.NANOCLAW_CONTAINER_CPUS);
+  }
+
   // Environment — only vars read by code we don't own.
   // Everything NanoClaw-specific is in container.json (read by runner at startup).
   args.push('-e', `TZ=${TIMEZONE}`);

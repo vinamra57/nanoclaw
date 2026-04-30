@@ -575,6 +575,31 @@ function startLocalWebhookServer(
   });
 }
 
+// Discord Gateway can fire the same MESSAGE_CREATE packet twice (race
+// between webhook-mode and legacy-mode handlers, or the discord.js Client
+// emitting the same raw packet on duplicate events). Track recent message
+// IDs and drop duplicates to prevent the agent from processing the same
+// user message twice. Cleared after 5 minutes — Discord IDs are snowflakes
+// so collisions are impossible within that window.
+const recentMessageIds = new Map<string, number>();
+const DEDUP_WINDOW_MS = 5 * 60 * 1000;
+
+function isDuplicateMessage(eventType: string, data: Record<string, unknown>): boolean {
+  if (eventType !== 'GATEWAY_MESSAGE_CREATE') return false;
+  const id = data.id;
+  if (typeof id !== 'string' || id.length === 0) return false;
+  const now = Date.now();
+  // Sweep expired entries
+  for (const [k, ts] of recentMessageIds) {
+    if (now - ts > DEDUP_WINDOW_MS) recentMessageIds.delete(k);
+  }
+  if (recentMessageIds.has(id)) {
+    return true;
+  }
+  recentMessageIds.set(id, now);
+  return false;
+}
+
 async function handleForwardedEvent(
   body: string,
   adapter: GatewayAdapter,
@@ -585,6 +610,14 @@ async function handleForwardedEvent(
   try {
     event = JSON.parse(body);
   } catch {
+    return;
+  }
+
+  // Drop duplicate MESSAGE_CREATE events (Discord can deliver the same packet twice)
+  if (isDuplicateMessage(event.type, event.data)) {
+    log.info('Dropping duplicate Discord message', {
+      messageId: event.data.id,
+    });
     return;
   }
 
