@@ -19,6 +19,7 @@
  */
 import { getChannelAdapter } from './channels/channel-registry.js';
 import { gateCommand } from './command-gate.js';
+import { handleProviderKey } from './provider-key-handler.js';
 import { getAgentGroup } from './db/agent-groups.js';
 import { recordDroppedMessage } from './db/dropped-messages.js';
 import {
@@ -443,6 +444,29 @@ async function deliverToAgent(
         content: JSON.stringify({ text: `Permission denied: ${gate.command} requires admin access.` }),
       });
       log.info('Admin command denied by gate', { command: gate.command, userId, agentGroupId: agent.agent_group_id });
+      return;
+    }
+
+    // Late-binding provider-key intercept: /edstem-key, /canvas-key,
+    // /gradescope-key are forwarded to ChatCSE for encrypted storage and
+    // MUST NOT reach the agent container or its logs.
+    let inboundText = '';
+    try {
+      const parsed = JSON.parse(event.message.content);
+      inboundText = (parsed.text || '').trim();
+    } catch {
+      inboundText = event.message.content.trim();
+    }
+    const pkResult = await handleProviderKey(inboundText);
+    if (pkResult.handled) {
+      writeOutboundDirect(session.agent_group_id, session.id, {
+        id: `pkey-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        kind: 'chat',
+        platformId: deliveryAddr.platformId,
+        channelType: deliveryAddr.channelType,
+        threadId: deliveryAddr.threadId,
+        content: JSON.stringify({ text: pkResult.replyText }),
+      });
       return;
     }
   }
