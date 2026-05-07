@@ -32,7 +32,15 @@ export function openOutboundDb(dbPath: string): Database.Database {
   return db;
 }
 
-/** Open the outbound DB for a session with write access. Only safe to call when no container is running. */
+/**
+ * Open the outbound DB for a session in WRITE mode.
+ *
+ * Reserved for the small set of host-side handlers that synthesize an
+ * outbound message without going through the container (host-sweep
+ * orphan-claim cleanup, command-gate denials, late-binding
+ * /provider-key confirmations). These run on the host process so the
+ * session DB is local; opening RW for the brief insert is safe.
+ */
 export function openOutboundDbRw(dbPath: string): Database.Database {
   const db = new Database(dbPath);
   db.pragma('journal_mode = DELETE');
