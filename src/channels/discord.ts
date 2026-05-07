@@ -4,6 +4,7 @@
  */
 import { createDiscordAdapter } from '@chat-adapter/discord';
 
+import { registerSlashCommands } from '../discord-slash-commands.js';
 import { readEnvFile } from '../env.js';
 import { createChatSdkBridge, type ReplyContext } from './chat-sdk-bridge.js';
 import { registerChannelAdapter } from './channel-registry.js';
@@ -27,6 +28,12 @@ registerChannelAdapter('discord', {
       publicKey: env.DISCORD_PUBLIC_KEY,
       applicationId: env.DISCORD_APPLICATION_ID,
     });
+    // Idempotently push our /<provider>-key slash commands to Discord. Fire
+    // and forget — registration failure leaves the legacy message-based
+    // /provider-key handler as fallback.
+    if (env.DISCORD_APPLICATION_ID) {
+      void registerSlashCommands(env.DISCORD_APPLICATION_ID, env.DISCORD_BOT_TOKEN);
+    }
     return createChatSdkBridge({
       adapter: discordAdapter,
       concurrency: 'concurrent',

@@ -621,9 +621,40 @@ async function handleForwardedEvent(
     return;
   }
 
-  // Handle interaction events (button clicks) — not handled by adapter's handleForwardedGatewayEvent
+  // Handle interaction events (button clicks, slash commands, modal submits)
+  // — not handled by adapter's handleForwardedGatewayEvent
   if (event.type === 'GATEWAY_INTERACTION_CREATE' && event.data) {
     const interaction = event.data;
+
+    // type 2 = ApplicationCommand (slash command). Our /<provider>-key
+    // commands respond with a modal so the secret never enters chat history;
+    // /connect issues a Composio OAuth link.
+    //
+    // appId is required for the follow-up edit (PATCH /webhooks/{appId}/...);
+    // read from nanoclaw/.env (the same source the adapter uses) — NOT
+    // process.env, since env.ts deliberately doesn't export to the env to
+    // keep secrets out of child processes.
+    const { readEnvFile } = await import('../env.js');
+    const appId = readEnvFile(['DISCORD_APPLICATION_ID']).DISCORD_APPLICATION_ID || '';
+
+    if (interaction.type === 2) {
+      const { handleApplicationCommand } = await import(
+        '../discord-slash-commands.js'
+      );
+      const handled = await handleApplicationCommand(interaction, appId);
+      if (handled) return;
+      // fall through to default if not one of ours
+    }
+
+    // type 5 = ModalSubmit. Pair to our /<provider>-key modal.
+    if (interaction.type === 5) {
+      const { handleModalSubmit } = await import(
+        '../discord-slash-commands.js'
+      );
+      const handled = await handleModalSubmit(interaction, appId);
+      if (handled) return;
+    }
+
     // type 3 = MessageComponent (button/select)
     if (interaction.type === 3) {
       const customId = (interaction.data as Record<string, unknown>)?.custom_id as string;
