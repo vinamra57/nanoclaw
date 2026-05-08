@@ -1,3 +1,5 @@
+import { redactString, redactValue } from './log-redact.js';
+
 const LEVELS = { debug: 20, info: 30, warn: 40, error: 50, fatal: 60 } as const;
 type Level = keyof typeof LEVELS;
 
@@ -43,7 +45,12 @@ function emit(level: Level, msg: string, data?: Record<string, unknown>): void {
   if (LEVELS[level] < threshold) return;
   const tag = `${COLORS[level]}${level.toUpperCase()}${level === 'fatal' ? FULL_RESET : RESET}`;
   const stream = LEVELS[level] >= LEVELS.warn ? process.stderr : process.stdout;
-  stream.write(`[${ts()}] ${tag} ${MSG_COLOR}${msg}${RESET}${data ? formatData(data) : ''}\n`);
+  // Defense-in-depth: scrub secret-shaped values from msg and data before
+  // they leave the process. Call sites still must avoid serializing
+  // secrets in the first place; this only catches mistakes.
+  const safeMsg = redactString(msg);
+  const safeData = data ? (redactValue(data) as Record<string, unknown>) : undefined;
+  stream.write(`[${ts()}] ${tag} ${MSG_COLOR}${safeMsg}${RESET}${safeData ? formatData(safeData) : ''}\n`);
 }
 
 export const log = {

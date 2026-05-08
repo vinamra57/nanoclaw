@@ -120,6 +120,13 @@ const FLAG_EPHEMERAL = 64;
  * level. Discord upserts on (application_id, name); calling this on every
  * daemon start is fine.
  *
+ * **Hazard (D1):** this uses `PUT /commands` — BULK REPLACE. The full set
+ * we POST replaces ANY commands previously registered against this Discord
+ * application from any source (dashboard, other deploys). For a
+ * single-tenant app like ours that's intentional; if you ever share the
+ * application across deploy environments, switch to `POST /commands`
+ * per-command + explicit deletes.
+ *
  * Returns the number of commands successfully registered. 0 on failure;
  * the caller logs but does not crash — the legacy message-based handler
  * is the fallback.
