@@ -11,6 +11,7 @@ import http from 'http';
 
 import type { Chat } from 'chat';
 
+import { handleControlRequest } from './control-api.js';
 import { log } from './log.js';
 
 const DEFAULT_PORT = 3000;
@@ -72,17 +73,46 @@ async function fromWebResponse(webRes: Response, nodeRes: http.ServerResponse): 
  */
 export function registerWebhookAdapter(chat: Chat, adapterName: string): void {
   routes.set(adapterName, { chat, adapterName });
-  ensureServer();
+  ensureHttpServer();
   log.info('Webhook adapter registered', { adapter: adapterName, path: `/webhook/${adapterName}` });
 }
 
-function ensureServer(): void {
+/**
+ * Idempotently start the shared HTTP server. Callable from boot code that
+ * wants the control plane (POST /api/agent-groups/wirings) reachable even
+ * when no chat adapter has registered yet — e.g. a daemon configured only
+ * for Discord-gateway flows that never opens a webhook listener.
+ */
+export function ensureHttpServer(): void {
+  startServer();
+}
+
+function startServer(): void {
   if (server) return;
 
   const port = parseInt(process.env.WEBHOOK_PORT || String(DEFAULT_PORT), 10);
 
   server = http.createServer(async (req, res) => {
     const url = req.url || '/';
+
+    // Route: /api/* — control plane (external orchestrator → daemon).
+    // Auth + dispatch live in control-api.ts; we only forward the
+    // request and write the response back here.
+    if (url.startsWith('/api/')) {
+      try {
+        const webReq = await toWebRequest(req);
+        const apiRes = await handleControlRequest(webReq);
+        if (apiRes) {
+          await fromWebResponse(apiRes, res);
+          return;
+        }
+      } catch (err) {
+        log.error('Control API handler error', { url, err });
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'internal' }));
+        return;
+      }
+    }
 
     // Route: /webhook/{adapterName}
     const match = url.match(/^\/webhook\/([^/?]+)/);
