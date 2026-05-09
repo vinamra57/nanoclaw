@@ -1,11 +1,15 @@
 /**
  * Tests for the control-api: covers auth (missing token, wrong token,
- * fail-closed when env unset), idempotency, and basic schema validation.
+ * fail-closed when env unset), idempotency, basic schema validation, and
+ * the agent_group creation flow.
  *
  * The handler is exercised at the Web API boundary (`Request → Response`)
  * to keep the test independent of the http server plumbing in
  * webhook-server.ts.
  */
+import fs from 'fs';
+import path from 'path';
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -13,6 +17,7 @@ import {
   initTestDb,
   runMigrations,
   createAgentGroup,
+  getAgentGroupByFolder,
   getMessagingGroupByPlatform,
   getMessagingGroupAgentByPair,
 } from './db/index.js';
@@ -20,6 +25,17 @@ import {
 vi.mock('./log.js', () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
+
+// Redirect filesystem writes from initGroupFilesystem out of the repo.
+const TEST_DIR = '/tmp/nanoclaw-control-api-test';
+vi.mock('./config.js', async () => {
+  const actual = await vi.importActual<typeof import('./config.js')>('./config.js');
+  return {
+    ...actual,
+    DATA_DIR: TEST_DIR,
+    GROUPS_DIR: path.join(TEST_DIR, 'groups'),
+  };
+});
 
 const TOKEN = 'test-control-token-' + Math.random().toString(36).slice(2);
 
@@ -45,6 +61,9 @@ function makeReq(opts: {
 }
 
 beforeEach(() => {
+  if (fs.existsSync(TEST_DIR)) fs.rmSync(TEST_DIR, { recursive: true });
+  fs.mkdirSync(TEST_DIR, { recursive: true });
+  fs.mkdirSync(path.join(TEST_DIR, 'groups'), { recursive: true });
   const db = initTestDb();
   runMigrations(db);
   createAgentGroup({
@@ -59,6 +78,7 @@ beforeEach(() => {
 
 afterEach(() => {
   closeDb();
+  if (fs.existsSync(TEST_DIR)) fs.rmSync(TEST_DIR, { recursive: true });
   delete process.env.NANOCLAW_CONTROL_TOKEN;
 });
 
@@ -218,6 +238,156 @@ describe('control-api wiring endpoint', () => {
       body: '{ not json',
     });
     const res = await handleControlRequest(req);
+    expect(res?.status).toBe(400);
+  });
+});
+
+describe('control-api create agent_group', () => {
+  it('creates a fresh agent_group with default folder + filesystem', async () => {
+    const { handleControlRequest } = await import('./control-api.js');
+    const req = new Request('http://test.local/api/agent-groups', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Vinamra Agent' }),
+    });
+    const res = await handleControlRequest(req);
+    expect(res?.status).toBe(200);
+    const body = (await res!.json()) as {
+      agent_group_id: string;
+      folder: string;
+      created: boolean;
+    };
+    expect(body.created).toBe(true);
+    expect(body.folder).toBe('vinamra-agent');
+    // DB row exists
+    expect(getAgentGroupByFolder('vinamra-agent')?.id).toBe(body.agent_group_id);
+    // Filesystem was initialized
+    expect(fs.existsSync(path.join(TEST_DIR, 'groups', 'vinamra-agent'))).toBe(true);
+    expect(
+      fs.existsSync(path.join(TEST_DIR, 'groups', 'vinamra-agent', 'container.json')),
+    ).toBe(true);
+  });
+
+  it('honors explicit folder override', async () => {
+    const { handleControlRequest } = await import('./control-api.js');
+    const req = new Request('http://test.local/api/agent-groups', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Whatever', folder: 'dm-with-alice' }),
+    });
+    const res = await handleControlRequest(req);
+    expect(res?.status).toBe(200);
+    const body = (await res!.json()) as { folder: string };
+    expect(body.folder).toBe('dm-with-alice');
+    expect(getAgentGroupByFolder('dm-with-alice')).toBeDefined();
+  });
+
+  it('writes the supplied container_config when provided', async () => {
+    const { handleControlRequest } = await import('./control-api.js');
+    const containerConfig = {
+      mcpServers: {
+        'virtual-ta': {
+          command: 'node',
+          args: ['/workspace/agent/virtual-ta-bridge/bridge.mjs'],
+          env: {
+            VIRTUAL_TA_URL: 'http://host.docker.internal:8001',
+            CHATCSE_AGENT_TOKEN: 'test-agent-token-for-the-student',
+          },
+        },
+      },
+      packages: { apt: [], npm: [] },
+      additionalMounts: [],
+      skills: 'all',
+      assistantName: 'Vinamra',
+    };
+    const req = new Request('http://test.local/api/agent-groups', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Vinamra',
+        folder: 'dm-with-vinamra-test',
+        container_config: containerConfig,
+      }),
+    });
+    const res = await handleControlRequest(req);
+    expect(res?.status).toBe(200);
+
+    const written = JSON.parse(
+      fs.readFileSync(
+        path.join(TEST_DIR, 'groups', 'dm-with-vinamra-test', 'container.json'),
+        'utf-8',
+      ),
+    );
+    expect(written.assistantName).toBe('Vinamra');
+    expect(written.mcpServers['virtual-ta'].env.CHATCSE_AGENT_TOKEN).toBe(
+      'test-agent-token-for-the-student',
+    );
+  });
+
+  it('is idempotent on folder — second POST returns existing id with created:false', async () => {
+    const { handleControlRequest } = await import('./control-api.js');
+    const make = () =>
+      handleControlRequest(
+        new Request('http://test.local/api/agent-groups', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'Repeat', folder: 'dm-with-repeat' }),
+        }),
+      );
+    const r1 = await make();
+    const j1 = (await r1!.json()) as { agent_group_id: string; created: boolean };
+    expect(j1.created).toBe(true);
+    const r2 = await make();
+    const j2 = (await r2!.json()) as { agent_group_id: string; created: boolean };
+    expect(j2.created).toBe(false);
+    expect(j2.agent_group_id).toBe(j1.agent_group_id);
+  });
+
+  it('rejects path traversal in folder', async () => {
+    const { handleControlRequest } = await import('./control-api.js');
+    const res = await handleControlRequest(
+      new Request('http://test.local/api/agent-groups', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Bad', folder: '../escape' }),
+      }),
+    );
+    // Folder normalizer strips leading / non-alnum so "../escape" → "escape".
+    // Either it normalizes safely (200 with folder="escape") or trips path
+    // traversal (400) — both are acceptable; what matters is no write
+    // outside GROUPS_DIR.
+    if (res?.status === 200) {
+      const body = (await res.json()) as { folder: string };
+      expect(body.folder).not.toContain('..');
+      expect(body.folder).not.toContain('/');
+    } else {
+      expect(res?.status).toBe(400);
+    }
+    // Filesystem outside groups dir was never touched.
+    expect(fs.existsSync(path.join(TEST_DIR, 'escape'))).toBe(false);
+  });
+
+  it('rejects missing name with 400', async () => {
+    const { handleControlRequest } = await import('./control-api.js');
+    const res = await handleControlRequest(
+      new Request('http://test.local/api/agent-groups', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folder: 'no-name' }),
+      }),
+    );
+    expect(res?.status).toBe(400);
+  });
+
+  it('rejects non-object container_config with 400', async () => {
+    const { handleControlRequest } = await import('./control-api.js');
+    const res = await handleControlRequest(
+      new Request('http://test.local/api/agent-groups', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'X', container_config: 'string-not-allowed' }),
+      }),
+    );
     expect(res?.status).toBe(400);
   });
 });

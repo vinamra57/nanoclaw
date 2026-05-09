@@ -1,41 +1,65 @@
 /**
- * Control API for external orchestrators (ChatCSE) to register Discord
- * user → agent_group wirings without holding a CLI session on the host.
+ * Control API for external orchestrators (ChatCSE) to manage agent_groups
+ * + Discord routing without holding a CLI session on the host.
  *
- * Single endpoint today:
+ * Endpoints:
+ *
+ *   POST /api/agent-groups
+ *     body: {
+ *       name: string,                              // human label
+ *       folder?: string,                           // override folder name
+ *       container_config?: object,                 // full container.json
+ *       agent_provider?: string,                   // default null
+ *     }
+ *     response 200: {
+ *       agent_group_id: string,
+ *       folder: string,
+ *       created: boolean
+ *     }
+ *
+ *     Idempotent on `folder`: if a folder with that name already exists,
+ *     returns its agent_group_id with `created: false`. This matches the
+ *     contract callers want for retries.
+ *
  *   POST /api/agent-groups/wirings
- *     body:
- *       {
- *         channel_type: "discord",
- *         platform_id: "@me:<discord_user_id>",
- *         agent_group_id: "ag-...",
- *         name?: string,           // human label for the messaging_group
- *         engage_mode?: "pattern" | "mention" | "mention-sticky",
- *         engage_pattern?: string, // default "." (match-all)
- *         session_mode?: "shared" | "per-thread" | "agent-shared",
- *         sender_scope?: "all" | "members",
- *         is_group?: boolean,
- *       }
+ *     body: {
+ *       channel_type: "discord",
+ *       platform_id: "@me:<discord_user_id>",
+ *       agent_group_id: "ag-...",
+ *       name?: string,           // human label for the messaging_group
+ *       engage_mode?: "pattern" | "mention" | "mention-sticky",
+ *       engage_pattern?: string, // default "." (match-all)
+ *       session_mode?: "shared" | "per-thread" | "agent-shared",
+ *       sender_scope?: "all" | "known",
+ *       is_group?: boolean,
+ *     }
  *     response 200: { messaging_group_id, messaging_group_agent_id, created: boolean }
  *
  * Auth: Bearer token in `Authorization` header. The expected token comes
  * from `NANOCLAW_CONTROL_TOKEN` env at server start. If the env var is
- * unset, the endpoint returns 503 ("control plane disabled") — fail-closed
- * so a misconfigured deployment can't silently accept anonymous wirings.
- *
- * Idempotent: re-posting the same (channel_type, platform_id, agent_group_id)
- * triple returns the existing IDs with `created: false` instead of creating
- * a duplicate row. This matches the contract callers want for retries
- * (ChatCSE re-attempts on transient daemon downtime).
+ * unset, every `/api/*` request returns 503 ("control plane disabled") —
+ * fail-closed so a misconfigured deployment can't silently accept
+ * anonymous mutations.
  */
+import fs from 'fs';
+import path from 'path';
+
+import { GROUPS_DIR } from './config.js';
+import {
+  createAgentGroup,
+  getAgentGroup,
+  getAgentGroupByFolder,
+} from './db/agent-groups.js';
 import {
   createMessagingGroup,
   createMessagingGroupAgent,
   getMessagingGroupAgentByPair,
   getMessagingGroupByPlatform,
 } from './db/messaging-groups.js';
+import { initGroupFilesystem } from './group-init.js';
 import { log } from './log.js';
 import type {
+  AgentGroup,
   EngageMode,
   IgnoredMessagePolicy,
   MessagingGroup,
@@ -213,6 +237,120 @@ async function handleAgentGroupWiring(req: Request): Promise<Response> {
   });
 }
 
+interface CreateAgentGroupBody {
+  name: unknown;
+  folder?: unknown;
+  container_config?: unknown;
+  agent_provider?: unknown;
+}
+
+// Allowed folder character set: lowercase letters, digits, hyphen.
+// Anything else gets normalized away to keep filesystem paths sane.
+function normalizeFolder(input: string): string {
+  return input
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64);
+}
+
+async function handleCreateAgentGroup(req: Request): Promise<Response> {
+  let body: CreateAgentGroupBody;
+  try {
+    body = (await req.json()) as CreateAgentGroupBody;
+  } catch {
+    return badRequest('invalid JSON body');
+  }
+
+  if (!isNonEmptyString(body.name)) return badRequest('name is required');
+
+  // Folder name: explicit override > normalized name. Always validated
+  // against path traversal below regardless of source.
+  const requestedFolder = isNonEmptyString(body.folder)
+    ? normalizeFolder(body.folder)
+    : normalizeFolder(body.name);
+  if (!requestedFolder) {
+    return badRequest('folder name resolved to empty after normalization');
+  }
+
+  // Idempotency: if a row already has this folder, return its id.
+  const existing = getAgentGroupByFolder(requestedFolder);
+  if (existing) {
+    return ok({
+      agent_group_id: existing.id,
+      folder: existing.folder,
+      created: false,
+    });
+  }
+
+  // Path-traversal guard — same shape as create-agent.ts.
+  const groupPath = path.join(GROUPS_DIR, requestedFolder);
+  const resolvedPath = path.resolve(groupPath);
+  const resolvedGroupsDir = path.resolve(GROUPS_DIR);
+  if (
+    !resolvedPath.startsWith(resolvedGroupsDir + path.sep) &&
+    resolvedPath !== resolvedGroupsDir
+  ) {
+    log.error('control-api: folder path traversal attempt', {
+      folder: requestedFolder,
+      resolvedPath,
+    });
+    return badRequest('invalid folder path');
+  }
+
+  const agentGroupId = newId('ag');
+  const now = nowIso();
+  const newGroup: AgentGroup = {
+    id: agentGroupId,
+    name: body.name,
+    folder: requestedFolder,
+    agent_provider: isNonEmptyString(body.agent_provider) ? body.agent_provider : null,
+    created_at: now,
+  };
+  createAgentGroup(newGroup);
+  initGroupFilesystem(newGroup);
+
+  // If the caller supplied a full container.json, overwrite the default
+  // template that initGroupFilesystem just wrote. We trust the caller (it's
+  // already authenticated via the control token) but JSON-validate to keep
+  // a malformed payload from breaking later container spawns.
+  if (body.container_config !== undefined) {
+    if (typeof body.container_config !== 'object' || body.container_config === null) {
+      return badRequest('container_config must be a JSON object');
+    }
+    const containerJsonPath = path.join(resolvedPath, 'container.json');
+    try {
+      fs.writeFileSync(
+        containerJsonPath,
+        JSON.stringify(body.container_config, null, 2) + '\n',
+      );
+    } catch (err) {
+      log.error('control-api: failed to write container.json', {
+        agentGroupId,
+        folder: requestedFolder,
+        err,
+      });
+      return new Response(
+        JSON.stringify({ error: 'failed to persist container_config' }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+  }
+
+  log.info('control-api: agent_group created', {
+    agentGroupId,
+    folder: requestedFolder,
+    name: body.name,
+    hadContainerConfig: body.container_config !== undefined,
+  });
+
+  return ok({
+    agent_group_id: agentGroupId,
+    folder: requestedFolder,
+    created: true,
+  });
+}
+
 export async function handleControlRequest(req: Request): Promise<Response | null> {
   const url = new URL(req.url);
   if (!url.pathname.startsWith('/api/')) return null;
@@ -228,6 +366,9 @@ export async function handleControlRequest(req: Request): Promise<Response | nul
     return unauthorized('invalid bearer token');
   }
 
+  if (url.pathname === '/api/agent-groups' && req.method === 'POST') {
+    return handleCreateAgentGroup(req);
+  }
   if (url.pathname === '/api/agent-groups/wirings' && req.method === 'POST') {
     return handleAgentGroupWiring(req);
   }
@@ -237,3 +378,6 @@ export async function handleControlRequest(req: Request): Promise<Response | nul
     headers: { 'Content-Type': 'application/json' },
   });
 }
+
+// Used by tests + admin tooling to surface agent_group existence checks.
+export { getAgentGroup };

@@ -177,7 +177,15 @@ async function main(): Promise<void> {
     };
   });
 
-  // 4. Delivery adapter bridge — dispatches to channel adapters
+  // 4. Delivery adapter bridge — dispatches to channel adapters.
+  //
+  // Persona-impersonation hook: when delivering to a Discord guild
+  // channel and the agent_group has a name (= "Vinamra", "Alice", …),
+  // route through a per-channel webhook so the message displays as
+  // "Vinamra's agent" instead of the shared bot's identity. The webhook
+  // path no-ops cleanly for DMs (Discord doesn't allow DM webhooks) and
+  // for any channel where the bot lacks Manage Webhooks. Falls back to
+  // the regular adapter.deliver() in all "can't" cases.
   const deliveryAdapter = {
     async deliver(
       channelType: string,
@@ -191,6 +199,60 @@ async function main(): Promise<void> {
       if (!adapter) {
         log.warn('No adapter for channel type', { channelType });
         return;
+      }
+      // Persona path — Discord guild channels only, opt-in via env so it
+      // stays off until the operator grants the bot Manage Webhooks.
+      if (
+        channelType === 'discord' &&
+        platformId &&
+        !platformId.startsWith('@me:') &&
+        process.env.NANOCLAW_PERSONA_ENABLED === '1' &&
+        kind === 'chat'
+      ) {
+        try {
+          const parsed = JSON.parse(content) as { text?: string };
+          const text = parsed.text;
+          if (text) {
+            const { getMessagingGroupByPlatform } = await import(
+              './db/messaging-groups.js'
+            );
+            const { getAgentGroup } = await import('./db/agent-groups.js');
+            const { deliverViaWebhook } = await import('./discord-persona.js');
+            const mg = getMessagingGroupByPlatform('discord', platformId);
+            if (mg && mg.is_group !== 0) {
+              // Find the wired agent_group's name to use as the persona.
+              // Multi-agent channels use the first wired agent's name —
+              // good enough; per-message persona resolution would need
+              // session context that this layer doesn't have.
+              const { getMessagingGroupAgents } = await import(
+                './db/messaging-groups.js'
+              );
+              const agents = getMessagingGroupAgents(mg.id);
+              const ag = agents.length > 0 ? getAgentGroup(agents[0].agent_group_id) : null;
+              if (ag?.name) {
+                const username = `${ag.name}'s agent`.slice(0, 80);
+                const fileBufs = (files ?? []).map((f) => ({
+                  name: f.filename,
+                  data: f.data,
+                }));
+                const id = await deliverViaWebhook({
+                  channelId: platformId,
+                  threadId,
+                  text,
+                  username,
+                  files: fileBufs.length > 0 ? fileBufs : undefined,
+                });
+                if (id) return id;
+                // Webhook path failed — log once and fall through to bot send.
+                log.debug('discord-persona: webhook send unavailable, using bot identity', {
+                  channelId: platformId,
+                });
+              }
+            }
+          }
+        } catch (err) {
+          log.warn('discord-persona: pre-deliver hook threw, falling back', { err });
+        }
       }
       return adapter.deliver(platformId, threadId, { kind, content: JSON.parse(content), files });
     },
