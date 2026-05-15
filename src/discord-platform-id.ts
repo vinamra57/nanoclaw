@@ -60,10 +60,7 @@ async function openDmChannel(userId: string): Promise<string | null> {
  * @param channelType  must be "discord"; otherwise the input is returned as-is.
  * @param platformId   `@me:<user_id>` (from ChatCSE) or already-canonical.
  */
-export async function normalizeDiscordPlatformId(
-  channelType: string,
-  platformId: string,
-): Promise<string> {
+export async function normalizeDiscordPlatformId(channelType: string, platformId: string): Promise<string> {
   if (channelType !== 'discord') return platformId;
   if (platformId.startsWith('discord:')) return platformId;
   const userMatch = platformId.match(/^@me:(\d{17,20})$/);
