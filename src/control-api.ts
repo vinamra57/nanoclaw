@@ -45,11 +45,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { GROUPS_DIR } from './config.js';
-import {
-  createAgentGroup,
-  getAgentGroup,
-  getAgentGroupByFolder,
-} from './db/agent-groups.js';
+import { createAgentGroup, getAgentGroup, getAgentGroupByFolder } from './db/agent-groups.js';
 import {
   createMessagingGroup,
   createMessagingGroupAgent,
@@ -168,8 +164,7 @@ async function handleAgentGroupWiring(req: Request): Promise<Response> {
   const senderScope: SenderScope = ALLOWED_SENDER_SCOPES.includes(body.sender_scope as SenderScope)
     ? (body.sender_scope as SenderScope)
     : 'all';
-  const ignoredPolicy: IgnoredMessagePolicy =
-    body.ignored_message_policy === 'accumulate' ? 'accumulate' : 'drop';
+  const ignoredPolicy: IgnoredMessagePolicy = body.ignored_message_policy === 'accumulate' ? 'accumulate' : 'drop';
   const isGroup = body.is_group === true ? 1 : 0;
   const unknownSenderPolicy: UnknownSenderPolicy =
     body.unknown_sender_policy === 'strict' || body.unknown_sender_policy === 'public'
@@ -268,9 +263,7 @@ async function handleCreateAgentGroup(req: Request): Promise<Response> {
 
   // Folder name: explicit override > normalized name. Always validated
   // against path traversal below regardless of source.
-  const requestedFolder = isNonEmptyString(body.folder)
-    ? normalizeFolder(body.folder)
-    : normalizeFolder(body.name);
+  const requestedFolder = isNonEmptyString(body.folder) ? normalizeFolder(body.folder) : normalizeFolder(body.name);
   if (!requestedFolder) {
     return badRequest('folder name resolved to empty after normalization');
   }
@@ -289,10 +282,7 @@ async function handleCreateAgentGroup(req: Request): Promise<Response> {
   const groupPath = path.join(GROUPS_DIR, requestedFolder);
   const resolvedPath = path.resolve(groupPath);
   const resolvedGroupsDir = path.resolve(GROUPS_DIR);
-  if (
-    !resolvedPath.startsWith(resolvedGroupsDir + path.sep) &&
-    resolvedPath !== resolvedGroupsDir
-  ) {
+  if (!resolvedPath.startsWith(resolvedGroupsDir + path.sep) && resolvedPath !== resolvedGroupsDir) {
     log.error('control-api: folder path traversal attempt', {
       folder: requestedFolder,
       resolvedPath,
@@ -322,20 +312,17 @@ async function handleCreateAgentGroup(req: Request): Promise<Response> {
     }
     const containerJsonPath = path.join(resolvedPath, 'container.json');
     try {
-      fs.writeFileSync(
-        containerJsonPath,
-        JSON.stringify(body.container_config, null, 2) + '\n',
-      );
+      fs.writeFileSync(containerJsonPath, JSON.stringify(body.container_config, null, 2) + '\n');
     } catch (err) {
       log.error('control-api: failed to write container.json', {
         agentGroupId,
         folder: requestedFolder,
         err,
       });
-      return new Response(
-        JSON.stringify({ error: 'failed to persist container_config' }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } },
-      );
+      return new Response(JSON.stringify({ error: 'failed to persist container_config' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
   }
 
@@ -374,7 +361,6 @@ async function handleWelcomeDM(req: Request): Promise<Response> {
   scheduleWelcomeDM(body.user_id, body.name);
   return ok({ scheduled: true });
 }
-
 
 export async function handleControlRequest(req: Request): Promise<Response | null> {
   const url = new URL(req.url);

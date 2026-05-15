@@ -6,8 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { redactString, redactValue } from './log-redact.js';
 
 const SECRET_ED = 'hGWOcB.L182I0NxkODB9Aj58FEURAW3lpFd8GEJirOnHzNr';
-const SECRET_JWT =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI4In0.signature_xyz_abc';
+const SECRET_JWT = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI4In0.signature_xyz_abc';
 const SECRET_COMPOSIO = 'ak_YSJtV1234567890abcdef';
 
 describe('redactString', () => {

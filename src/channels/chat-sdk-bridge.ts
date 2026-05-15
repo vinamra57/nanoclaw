@@ -638,9 +638,7 @@ async function handleForwardedEvent(
     const appId = readEnvFile(['DISCORD_APPLICATION_ID']).DISCORD_APPLICATION_ID || '';
 
     if (interaction.type === 2) {
-      const { handleApplicationCommand } = await import(
-        '../discord-slash-commands.js'
-      );
+      const { handleApplicationCommand } = await import('../discord-slash-commands.js');
       const handled = await handleApplicationCommand(interaction, appId);
       if (handled) return;
       // fall through to default if not one of ours
@@ -648,9 +646,7 @@ async function handleForwardedEvent(
 
     // type 5 = ModalSubmit. Pair to our /<provider>-key modal.
     if (interaction.type === 5) {
-      const { handleModalSubmit } = await import(
-        '../discord-slash-commands.js'
-      );
+      const { handleModalSubmit } = await import('../discord-slash-commands.js');
       const handled = await handleModalSubmit(interaction, appId);
       if (handled) return;
     }

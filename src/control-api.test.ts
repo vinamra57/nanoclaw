@@ -43,12 +43,7 @@ function now(): string {
   return new Date().toISOString();
 }
 
-function makeReq(opts: {
-  method?: string;
-  path?: string;
-  auth?: string | null;
-  body?: unknown;
-}): Request {
+function makeReq(opts: { method?: string; path?: string; auth?: string | null; body?: unknown }): Request {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (opts.auth !== null && opts.auth !== undefined) {
     headers['Authorization'] = opts.auth;
@@ -119,9 +114,7 @@ describe('control-api auth', () => {
 
   it('returns null for non-/api paths so caller falls through', async () => {
     const { handleControlRequest } = await import('./control-api.js');
-    const res = await handleControlRequest(
-      makeReq({ path: '/webhook/discord', auth: `Bearer ${TOKEN}` }),
-    );
+    const res = await handleControlRequest(makeReq({ path: '/webhook/discord', auth: `Bearer ${TOKEN}` }));
     expect(res).toBeNull();
   });
 });
@@ -172,11 +165,7 @@ describe('control-api wiring endpoint', () => {
 
   it('rejects missing required fields with 400', async () => {
     const { handleControlRequest } = await import('./control-api.js');
-    for (const bad of [
-      {},
-      { channel_type: 'discord' },
-      { channel_type: 'discord', platform_id: '@me:333' },
-    ]) {
+    for (const bad of [{}, { channel_type: 'discord' }, { channel_type: 'discord', platform_id: '@me:333' }]) {
       const res = await handleControlRequest(makeReq({ auth: `Bearer ${TOKEN}`, body: bad }));
       expect(res?.status).toBe(400);
     }
@@ -263,9 +252,7 @@ describe('control-api create agent_group', () => {
     expect(getAgentGroupByFolder('vinamra-agent')?.id).toBe(body.agent_group_id);
     // Filesystem was initialized
     expect(fs.existsSync(path.join(TEST_DIR, 'groups', 'vinamra-agent'))).toBe(true);
-    expect(
-      fs.existsSync(path.join(TEST_DIR, 'groups', 'vinamra-agent', 'container.json')),
-    ).toBe(true);
+    expect(fs.existsSync(path.join(TEST_DIR, 'groups', 'vinamra-agent', 'container.json'))).toBe(true);
   });
 
   it('honors explicit folder override', async () => {
@@ -313,15 +300,10 @@ describe('control-api create agent_group', () => {
     expect(res?.status).toBe(200);
 
     const written = JSON.parse(
-      fs.readFileSync(
-        path.join(TEST_DIR, 'groups', 'dm-with-vinamra-test', 'container.json'),
-        'utf-8',
-      ),
+      fs.readFileSync(path.join(TEST_DIR, 'groups', 'dm-with-vinamra-test', 'container.json'), 'utf-8'),
     );
     expect(written.assistantName).toBe('Vinamra');
-    expect(written.mcpServers['virtual-ta'].env.CHATCSE_AGENT_TOKEN).toBe(
-      'test-agent-token-for-the-student',
-    );
+    expect(written.mcpServers['virtual-ta'].env.CHATCSE_AGENT_TOKEN).toBe('test-agent-token-for-the-student');
   });
 
   it('is idempotent on folder — second POST returns existing id with created:false', async () => {

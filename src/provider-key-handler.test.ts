@@ -50,7 +50,7 @@ describe('handleProviderKey', () => {
 
   it('handles /edstem-key happy path and never echoes the secret', async () => {
     process.env.STUDENT_ASSISTANT_ENV_PATH = makeFakeEnv(
-      `CHATCSE_AGENT_TOKEN=fake-token\nCHATCSE_BASE_URL=http://localhost:8000\n`
+      `CHATCSE_AGENT_TOKEN=fake-token\nCHATCSE_BASE_URL=http://localhost:8000\n`,
     );
     let capturedBody: any = null;
     let capturedAuth: string | null = null;
@@ -73,7 +73,7 @@ describe('handleProviderKey', () => {
 
   it('surfaces ChatCSE 4xx without echoing the secret', async () => {
     process.env.STUDENT_ASSISTANT_ENV_PATH = makeFakeEnv(
-      `CHATCSE_AGENT_TOKEN=fake-token\nCHATCSE_BASE_URL=http://localhost:8000\n`
+      `CHATCSE_AGENT_TOKEN=fake-token\nCHATCSE_BASE_URL=http://localhost:8000\n`,
     );
     globalThis.fetch = vi.fn(async () => new Response('something broke', { status: 400 })) as any;
 
@@ -87,7 +87,7 @@ describe('handleProviderKey', () => {
 
   it('surfaces network failure without echoing the secret', async () => {
     process.env.STUDENT_ASSISTANT_ENV_PATH = makeFakeEnv(
-      `CHATCSE_AGENT_TOKEN=fake-token\nCHATCSE_BASE_URL=http://localhost:8000\n`
+      `CHATCSE_AGENT_TOKEN=fake-token\nCHATCSE_BASE_URL=http://localhost:8000\n`,
     );
     globalThis.fetch = vi.fn(async () => {
       throw new Error('connection refused');
@@ -102,9 +102,7 @@ describe('handleProviderKey', () => {
   });
 
   it('refuses gracefully when CHATCSE_AGENT_TOKEN is missing', async () => {
-    process.env.STUDENT_ASSISTANT_ENV_PATH = makeFakeEnv(
-      `CHATCSE_BASE_URL=http://localhost:8000\n`
-    );
+    process.env.STUDENT_ASSISTANT_ENV_PATH = makeFakeEnv(`CHATCSE_BASE_URL=http://localhost:8000\n`);
     const result = await handleProviderKey(`/edstem-key ${SECRET}`);
     expect(result.handled).toBe(true);
     if (result.handled) {
@@ -115,7 +113,7 @@ describe('handleProviderKey', () => {
 
   it('falls back to deriving CHATCSE base URL from VIRTUAL_TA_URL', async () => {
     process.env.STUDENT_ASSISTANT_ENV_PATH = makeFakeEnv(
-      `CHATCSE_AGENT_TOKEN=fake\nVIRTUAL_TA_URL=http://host.docker.internal:8001\n`
+      `CHATCSE_AGENT_TOKEN=fake\nVIRTUAL_TA_URL=http://host.docker.internal:8001\n`,
     );
     let capturedUrl = '';
     globalThis.fetch = vi.fn(async (url) => {
@@ -125,9 +123,7 @@ describe('handleProviderKey', () => {
 
     await handleProviderKey(`/edstem-key ${SECRET}`);
     // VIRTUAL_TA_URL is :8001 (MCP); REST is on :8000.
-    expect(capturedUrl).toBe(
-      'http://host.docker.internal:8000/api/agent/credentials/edstem'
-    );
+    expect(capturedUrl).toBe('http://host.docker.internal:8000/api/agent/credentials/edstem');
   });
 
   it.each([
@@ -135,7 +131,7 @@ describe('handleProviderKey', () => {
     ['/gradescope-key', 'gradescope'],
   ])('handles %s by routing to /api/agent/credentials/%s', async (cmd, slug) => {
     process.env.STUDENT_ASSISTANT_ENV_PATH = makeFakeEnv(
-      `CHATCSE_AGENT_TOKEN=fake\nCHATCSE_BASE_URL=http://localhost:8000\n`
+      `CHATCSE_AGENT_TOKEN=fake\nCHATCSE_BASE_URL=http://localhost:8000\n`,
     );
     let capturedUrl = '';
     globalThis.fetch = vi.fn(async (url) => {
@@ -149,7 +145,7 @@ describe('handleProviderKey', () => {
 
   it('case-insensitive matches the slash command', async () => {
     process.env.STUDENT_ASSISTANT_ENV_PATH = makeFakeEnv(
-      `CHATCSE_AGENT_TOKEN=fake\nCHATCSE_BASE_URL=http://localhost:8000\n`
+      `CHATCSE_AGENT_TOKEN=fake\nCHATCSE_BASE_URL=http://localhost:8000\n`,
     );
     globalThis.fetch = vi.fn(async () => new Response('{}', { status: 201 })) as any;
     const result = await handleProviderKey(`/EdStem-Key ${SECRET}`);

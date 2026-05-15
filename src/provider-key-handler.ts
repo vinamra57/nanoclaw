@@ -20,9 +20,7 @@ import path from 'node:path';
 
 import { log } from './log.js';
 
-export type ProviderKeyResult =
-  | { handled: false }
-  | { handled: true; replyText: string };
+export type ProviderKeyResult = { handled: false } | { handled: true; replyText: string };
 
 const SUPPORTED_PROVIDERS = new Set(['edstem-key', 'canvas-key', 'gradescope-key']);
 
@@ -111,9 +109,7 @@ export async function handleProviderKey(rawText: string): Promise<ProviderKeyRes
  * container startup, and now by this slash-command handler too.
  */
 function readChatCSEEnv(): { token: string; baseUrl: string } {
-  const envPath =
-    process.env.STUDENT_ASSISTANT_ENV_PATH ||
-    path.join(os.homedir(), 'student-assistant', '.env');
+  const envPath = process.env.STUDENT_ASSISTANT_ENV_PATH || path.join(os.homedir(), 'student-assistant', '.env');
   let raw: string;
   try {
     raw = fs.readFileSync(envPath, 'utf8');
@@ -125,16 +121,17 @@ function readChatCSEEnv(): { token: string; baseUrl: string } {
     const i = line.indexOf('=');
     if (i <= 0 || line.startsWith('#')) continue;
     const k = line.slice(0, i).trim();
-    const v = line.slice(i + 1).trim().replace(/^["']|["']$/g, '');
+    const v = line
+      .slice(i + 1)
+      .trim()
+      .replace(/^["']|["']$/g, '');
     map[k] = v;
   }
   const token = map.CHATCSE_AGENT_TOKEN;
   // VIRTUAL_TA_URL points to ChatCSE's base — same host, MCP is at /mcp,
   // REST is at /api/*. Default to host.docker.internal:8000 for local dev.
   const baseUrl =
-    map.CHATCSE_BASE_URL ||
-    map.VIRTUAL_TA_URL?.replace(/:8001$/, ':8000') ||
-    'http://host.docker.internal:8000';
+    map.CHATCSE_BASE_URL || map.VIRTUAL_TA_URL?.replace(/:8001$/, ':8000') || 'http://host.docker.internal:8000';
   if (!token) {
     throw new Error('CHATCSE_AGENT_TOKEN missing');
   }

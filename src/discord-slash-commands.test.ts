@@ -36,9 +36,7 @@ describe('extractModalValue', () => {
       components: [
         {
           type: 1,
-          components: [
-            { type: 4, custom_id: 'value', value: SECRET },
-          ],
+          components: [{ type: 4, custom_id: 'value', value: SECRET }],
         },
       ],
     };
@@ -124,37 +122,32 @@ describe('handleApplicationCommand', () => {
     globalThis.fetch = originalFetch;
   });
 
-  it.each(['edstem-key', 'canvas-key', 'gradescope-key'])(
-    'responds with a modal for /%s',
-    async (cmdName) => {
-      let capturedUrl = '';
-      let capturedBody: any = null;
-      globalThis.fetch = vi.fn(async (url, init) => {
-        capturedUrl = url.toString();
-        capturedBody = JSON.parse(init?.body as string);
-        return new Response(null, { status: 204 });
-      }) as any;
-      const interaction = {
-        id: 'iid-1',
-        token: 'itok-1',
-        data: { name: cmdName },
-      };
-      const handled = await handleApplicationCommand(interaction);
-      expect(handled).toBe(true);
-      expect(capturedUrl).toBe(
-        'https://discord.com/api/v10/interactions/iid-1/itok-1/callback'
-      );
-      // type 9 = MODAL response
-      expect(capturedBody.type).toBe(9);
-      expect(capturedBody.data.title).toBeTruthy();
-      expect(capturedBody.data.custom_id).toMatch(/^pkey:/);
-      // Modal contains a single SHORT TextInput (style: 1)
-      const inner = capturedBody.data.components[0].components[0];
-      expect(inner.type).toBe(4);
-      expect(inner.style).toBe(1);
-      expect(inner.required).toBe(true);
-    }
-  );
+  it.each(['edstem-key', 'canvas-key', 'gradescope-key'])('responds with a modal for /%s', async (cmdName) => {
+    let capturedUrl = '';
+    let capturedBody: any = null;
+    globalThis.fetch = vi.fn(async (url, init) => {
+      capturedUrl = url.toString();
+      capturedBody = JSON.parse(init?.body as string);
+      return new Response(null, { status: 204 });
+    }) as any;
+    const interaction = {
+      id: 'iid-1',
+      token: 'itok-1',
+      data: { name: cmdName },
+    };
+    const handled = await handleApplicationCommand(interaction);
+    expect(handled).toBe(true);
+    expect(capturedUrl).toBe('https://discord.com/api/v10/interactions/iid-1/itok-1/callback');
+    // type 9 = MODAL response
+    expect(capturedBody.type).toBe(9);
+    expect(capturedBody.data.title).toBeTruthy();
+    expect(capturedBody.data.custom_id).toMatch(/^pkey:/);
+    // Modal contains a single SHORT TextInput (style: 1)
+    const inner = capturedBody.data.components[0].components[0];
+    expect(inner.type).toBe(4);
+    expect(inner.style).toBe(1);
+    expect(inner.required).toBe(true);
+  });
 
   it('returns false for unknown slash commands', async () => {
     const interaction = { id: 'x', token: 'y', data: { name: 'unrelated' } };
@@ -175,7 +168,7 @@ describe('handleModalSubmit', () => {
 
   it('posts the value to ChatCSE with the agent token, then ephemeral acks', async () => {
     process.env.STUDENT_ASSISTANT_ENV_PATH = makeFakeEnv(
-      `CHATCSE_AGENT_TOKEN=fake-token\nCHATCSE_BASE_URL=http://localhost:8000\n`
+      `CHATCSE_AGENT_TOKEN=fake-token\nCHATCSE_BASE_URL=http://localhost:8000\n`,
     );
     const calls: Array<{ url: string; body: string | null; method: string }> = [];
     globalThis.fetch = vi.fn(async (url, init) => {
@@ -215,14 +208,12 @@ describe('handleModalSubmit', () => {
     // Second call: POST to ChatCSE
     const chatcseCall = calls.find((c) => c.url.includes('/api/agent/credentials/'));
     expect(chatcseCall).toBeTruthy();
-    expect(chatcseCall!.url).toBe(
-      'http://localhost:8000/api/agent/credentials/edstem'
-    );
+    expect(chatcseCall!.url).toBe('http://localhost:8000/api/agent/credentials/edstem');
     expect(JSON.parse(chatcseCall!.body!).value).toBe(SECRET);
 
     // Third call: edit the deferred reply (ephemeral)
     const editCall = calls.find(
-      (c) => c.method === 'PATCH' && c.url.includes('/webhooks/app-123/itok-2/messages/@original')
+      (c) => c.method === 'PATCH' && c.url.includes('/webhooks/app-123/itok-2/messages/@original'),
     );
     expect(editCall).toBeTruthy();
     const editBody = JSON.parse(editCall!.body!);
@@ -232,9 +223,7 @@ describe('handleModalSubmit', () => {
   });
 
   it('refuses cleanly when CHATCSE_AGENT_TOKEN is missing — never echoes the value', async () => {
-    process.env.STUDENT_ASSISTANT_ENV_PATH = makeFakeEnv(
-      `CHATCSE_BASE_URL=http://localhost:8000\n`
-    );
+    process.env.STUDENT_ASSISTANT_ENV_PATH = makeFakeEnv(`CHATCSE_BASE_URL=http://localhost:8000\n`);
     const calls: any[] = [];
     globalThis.fetch = vi.fn(async (url, init) => {
       calls.push({ url: url.toString(), body: init?.body, method: init?.method });
@@ -246,9 +235,7 @@ describe('handleModalSubmit', () => {
       token: 'itok-3',
       data: {
         custom_id: 'pkey:canvas',
-        components: [
-          { type: 1, components: [{ type: 4, custom_id: 'value', value: SECRET }] },
-        ],
+        components: [{ type: 1, components: [{ type: 4, custom_id: 'value', value: SECRET }] }],
       },
     };
     const handled = await handleModalSubmit(interaction, 'app-123');
@@ -268,7 +255,7 @@ describe('handleModalSubmit', () => {
 
   it('surfaces ChatCSE 4xx without echoing the secret', async () => {
     process.env.STUDENT_ASSISTANT_ENV_PATH = makeFakeEnv(
-      `CHATCSE_AGENT_TOKEN=fake\nCHATCSE_BASE_URL=http://localhost:8000\n`
+      `CHATCSE_AGENT_TOKEN=fake\nCHATCSE_BASE_URL=http://localhost:8000\n`,
     );
     const calls: any[] = [];
     globalThis.fetch = vi.fn(async (url, init) => {
@@ -328,10 +315,7 @@ describe('handleConnectCommand', () => {
       calls.push({ url: url.toString(), body: init?.body });
       return new Response(null, { status: 204 });
     }) as any;
-    const handled = await handleConnectCommand(
-      buildInteraction('not-a-real-toolkit'),
-      'app-123',
-    );
+    const handled = await handleConnectCommand(buildInteraction('not-a-real-toolkit'), 'app-123');
     expect(handled).toBe(true);
     // Single ephemeral immediate response, no defer
     expect(calls.length).toBe(1);
@@ -341,9 +325,7 @@ describe('handleConnectCommand', () => {
   });
 
   it('happy path: fetches auth_configs, posts /link, edits initial reply with URL', async () => {
-    process.env.STUDENT_ASSISTANT_ENV_PATH = makeFakeEnv(
-      `COMPOSIO_API_KEY=ak_live_test\nCOMPOSIO_USER_ID=8\n`,
-    );
+    process.env.STUDENT_ASSISTANT_ENV_PATH = makeFakeEnv(`COMPOSIO_API_KEY=ak_live_test\nCOMPOSIO_USER_ID=8\n`);
     const calls: Array<{ url: string; body: string | null; method: string }> = [];
     globalThis.fetch = vi.fn(async (url, init) => {
       const u = url.toString();
@@ -364,9 +346,7 @@ describe('handleConnectCommand', () => {
       if (u.includes('/auth_configs')) {
         return new Response(
           JSON.stringify({
-            items: [
-              { id: 'ac_test_gmail', toolkit: { slug: 'gmail' } },
-            ],
+            items: [{ id: 'ac_test_gmail', toolkit: { slug: 'gmail' } }],
           }),
           { status: 200 },
         );
@@ -400,26 +380,18 @@ describe('handleConnectCommand', () => {
   });
 
   it('short-circuits when an ACTIVE connection already exists', async () => {
-    process.env.STUDENT_ASSISTANT_ENV_PATH = makeFakeEnv(
-      `COMPOSIO_API_KEY=ak_live_test\nCOMPOSIO_USER_ID=8\n`,
-    );
+    process.env.STUDENT_ASSISTANT_ENV_PATH = makeFakeEnv(`COMPOSIO_API_KEY=ak_live_test\nCOMPOSIO_USER_ID=8\n`);
     const calls: any[] = [];
     globalThis.fetch = vi.fn(async (url, init) => {
       const u = url.toString();
       calls.push({ url: u, body: init?.body, method: init?.method });
       if (u.includes('/connected_accounts?')) {
-        return new Response(
-          JSON.stringify({ items: [{ id: 'ca_existing', status: 'ACTIVE' }] }),
-          { status: 200 },
-        );
+        return new Response(JSON.stringify({ items: [{ id: 'ca_existing', status: 'ACTIVE' }] }), { status: 200 });
       }
       return new Response(null, { status: 204 });
     }) as any;
 
-    const handled = await handleConnectCommand(
-      buildInteraction('googlecalendar'),
-      'app-123',
-    );
+    const handled = await handleConnectCommand(buildInteraction('googlecalendar'), 'app-123');
     expect(handled).toBe(true);
 
     // Should NOT have posted to /link
@@ -431,9 +403,7 @@ describe('handleConnectCommand', () => {
   });
 
   it('refuses cleanly when COMPOSIO_API_KEY is missing', async () => {
-    process.env.STUDENT_ASSISTANT_ENV_PATH = makeFakeEnv(
-      `COMPOSIO_USER_ID=8\n`,
-    );
+    process.env.STUDENT_ASSISTANT_ENV_PATH = makeFakeEnv(`COMPOSIO_USER_ID=8\n`);
     const calls: any[] = [];
     globalThis.fetch = vi.fn(async (url, init) => {
       calls.push({ url: url.toString(), body: init?.body, method: init?.method });

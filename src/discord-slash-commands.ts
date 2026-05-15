@@ -56,8 +56,7 @@ const COMMAND_NAME: Record<Provider, string> = {
 const COMMAND_DESCRIPTION: Record<Provider, string> = {
   edstem: 'Save your Edstem API token (entered in a private prompt)',
   canvas: 'Save your Canvas API token (entered in a private prompt)',
-  gradescope:
-    'Save your Gradescope local password (entered in a private prompt) — see /docs for the SSO setup',
+  gradescope: 'Save your Gradescope local password (entered in a private prompt) — see /docs for the SSO setup',
   github: 'Save your GitHub personal access token (entered in a private prompt)',
 };
 
@@ -135,10 +134,7 @@ const FLAG_EPHEMERAL = 64;
  * the caller logs but does not crash — the legacy message-based handler
  * is the fallback.
  */
-export async function registerSlashCommands(
-  appId: string,
-  botToken: string,
-): Promise<number> {
+export async function registerSlashCommands(appId: string, botToken: string): Promise<number> {
   if (!appId || !botToken) {
     log.warn('Slash command registration skipped — appId or botToken missing');
     return 0;
@@ -158,8 +154,7 @@ export async function registerSlashCommands(
   // render in chat history.
   commands.push({
     name: CONNECT_COMMAND_NAME,
-    description:
-      'Connect a third-party app via OAuth (Gmail, Calendar, Drive, etc.)',
+    description: 'Connect a third-party app via OAuth (Gmail, Calendar, Drive, etc.)',
     type: 1,
     contexts: [0, 1, 2],
     integration_types: [0, 1],
@@ -174,17 +169,14 @@ export async function registerSlashCommands(
     ],
   });
   try {
-    const r = await fetch(
-      `${DISCORD_API}/applications/${appId}/commands`,
-      {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bot ${botToken}`,
-        },
-        body: JSON.stringify(commands),
+    const r = await fetch(`${DISCORD_API}/applications/${appId}/commands`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bot ${botToken}`,
       },
-    );
+      body: JSON.stringify(commands),
+    });
     if (!r.ok) {
       log.warn('Slash command registration failed', {
         status: r.status,
@@ -217,10 +209,7 @@ export async function registerSlashCommands(
  *   /connect <app>       → generates a Composio OAuth link and ephemerally
  *                          posts it back with a "click within 30 min" hint
  */
-export async function handleApplicationCommand(
-  interaction: Record<string, unknown>,
-  appId?: string,
-): Promise<boolean> {
+export async function handleApplicationCommand(interaction: Record<string, unknown>, appId?: string): Promise<boolean> {
   const data = (interaction.data as Record<string, unknown> | undefined) ?? {};
   const name = data.name as string | undefined;
   if (!name) return false;
@@ -265,14 +254,11 @@ export async function handleApplicationCommand(
   };
 
   try {
-    const r = await fetch(
-      `${DISCORD_API}/interactions/${interactionId}/${interactionToken}/callback`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      },
-    );
+    const r = await fetch(`${DISCORD_API}/interactions/${interactionId}/${interactionToken}/callback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
     if (!r.ok) {
       log.warn('Modal callback failed', {
         provider,
@@ -297,10 +283,7 @@ export async function handleApplicationCommand(
  * acknowledged the interaction (success or graceful error) — the caller
  * should not fall through.
  */
-export async function handleConnectCommand(
-  interaction: Record<string, unknown>,
-  appId: string,
-): Promise<boolean> {
+export async function handleConnectCommand(interaction: Record<string, unknown>, appId: string): Promise<boolean> {
   const data = (interaction.data as Record<string, unknown> | undefined) ?? {};
   const opts = (data.options as Array<Record<string, unknown>> | undefined) ?? [];
   const appOpt = opts.find((o) => o.name === 'app');
@@ -368,37 +351,26 @@ export async function handleConnectCommand(
 
   // Issue a fresh link.
   try {
-    const r = await fetch(
-      'https://backend.composio.dev/api/v3/connected_accounts/link',
-      {
-        method: 'POST',
-        headers: {
-          'x-api-key': composio.apiKey,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          auth_config_id: authConfigId,
-          user_id: composio.userId,
-        }),
+    const r = await fetch('https://backend.composio.dev/api/v3/connected_accounts/link', {
+      method: 'POST',
+      headers: {
+        'x-api-key': composio.apiKey,
+        'Content-Type': 'application/json',
       },
-    );
+      body: JSON.stringify({
+        auth_config_id: authConfigId,
+        user_id: composio.userId,
+      }),
+    });
     if (!r.ok) {
       const detail = (await r.text()).slice(0, 240);
-      await editInitial(
-        appId,
-        interactionToken,
-        `Composio rejected the link request (HTTP ${r.status}): ${detail}`,
-      );
+      await editInitial(appId, interactionToken, `Composio rejected the link request (HTTP ${r.status}): ${detail}`);
       return true;
     }
     const j = (await r.json()) as { redirect_url?: string };
     const url = j.redirect_url ?? '';
     if (!url) {
-      await editInitial(
-        appId,
-        interactionToken,
-        `Composio returned no redirect_url. Try again or contact staff.`,
-      );
+      await editInitial(appId, interactionToken, `Composio returned no redirect_url. Try again or contact staff.`);
       return true;
     }
     await editInitial(
@@ -432,10 +404,7 @@ export async function handleConnectCommand(
  * value was forwarded to ChatCSE (success or graceful failure). Returns
  * false if the modal isn't ours so the caller can ignore.
  */
-export async function handleModalSubmit(
-  interaction: Record<string, unknown>,
-  appId: string,
-): Promise<boolean> {
+export async function handleModalSubmit(interaction: Record<string, unknown>, appId: string): Promise<boolean> {
   const data = (interaction.data as Record<string, unknown> | undefined) ?? {};
   const customId = data.custom_id as string | undefined;
   if (!customId?.startsWith(MODAL_CUSTOM_ID_PREFIX)) return false;
@@ -449,11 +418,7 @@ export async function handleModalSubmit(
 
   const value = extractModalValue(data);
   if (!value) {
-    await respondEphemeral(
-      interactionId,
-      interactionToken,
-      `No value submitted for ${provider}.`,
-    );
+    await respondEphemeral(interactionId, interactionToken, `No value submitted for ${provider}.`);
     return true;
   }
 
@@ -477,25 +442,18 @@ export async function handleModalSubmit(
   }
 
   try {
-    const r = await fetch(
-      `${chatcseEnv.baseUrl.replace(/\/$/, '')}/api/agent/credentials/${provider}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${chatcseEnv.token}`,
-        },
-        body: JSON.stringify({ value }),
+    const r = await fetch(`${chatcseEnv.baseUrl.replace(/\/$/, '')}/api/agent/credentials/${provider}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${chatcseEnv.token}`,
       },
-    );
+      body: JSON.stringify({ value }),
+    });
     if (!r.ok) {
       const detail = (await r.text()).slice(0, 240);
       log.warn('Modal submit: ChatCSE rejected', { provider, status: r.status });
-      await editInitial(
-        appId,
-        interactionToken,
-        `ChatCSE rejected the ${provider} key (HTTP ${r.status}): ${detail}`,
-      );
+      await editInitial(appId, interactionToken, `ChatCSE rejected the ${provider} key (HTTP ${r.status}): ${detail}`);
       return true;
     }
     await editInitial(
@@ -527,9 +485,7 @@ export async function handleModalSubmit(
  * Modal submits arrive as: `data.components[0].components[0].value` per
  * Discord's interactions docs. Defensive against missing fields.
  */
-export function extractModalValue(
-  data: Record<string, unknown>,
-): string | null {
+export function extractModalValue(data: Record<string, unknown>): string | null {
   const rows = data.components as Array<Record<string, unknown>> | undefined;
   if (!rows || rows.length === 0) return null;
   for (const row of rows) {
@@ -544,41 +500,28 @@ export function extractModalValue(
   return null;
 }
 
-async function deferEphemeral(
-  interactionId: string,
-  interactionToken: string,
-): Promise<void> {
+async function deferEphemeral(interactionId: string, interactionToken: string): Promise<void> {
   try {
-    await fetch(
-      `${DISCORD_API}/interactions/${interactionId}/${interactionToken}/callback`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: RESP_DEFERRED_EPHEMERAL,
-          data: { flags: FLAG_EPHEMERAL },
-        }),
-      },
-    );
+    await fetch(`${DISCORD_API}/interactions/${interactionId}/${interactionToken}/callback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: RESP_DEFERRED_EPHEMERAL,
+        data: { flags: FLAG_EPHEMERAL },
+      }),
+    });
   } catch (err) {
     log.warn('Failed to defer interaction', { err: (err as Error).message });
   }
 }
 
-async function editInitial(
-  appId: string,
-  interactionToken: string,
-  content: string,
-): Promise<void> {
+async function editInitial(appId: string, interactionToken: string, content: string): Promise<void> {
   try {
-    await fetch(
-      `${DISCORD_API}/webhooks/${appId}/${interactionToken}/messages/@original`,
-      {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content, flags: FLAG_EPHEMERAL }),
-      },
-    );
+    await fetch(`${DISCORD_API}/webhooks/${appId}/${interactionToken}/messages/@original`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content, flags: FLAG_EPHEMERAL }),
+    });
   } catch (err) {
     log.warn('Failed to edit interaction reply', {
       err: (err as Error).message,
@@ -586,23 +529,16 @@ async function editInitial(
   }
 }
 
-async function respondEphemeral(
-  interactionId: string,
-  interactionToken: string,
-  content: string,
-): Promise<void> {
+async function respondEphemeral(interactionId: string, interactionToken: string, content: string): Promise<void> {
   try {
-    await fetch(
-      `${DISCORD_API}/interactions/${interactionId}/${interactionToken}/callback`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 4,
-          data: { content, flags: FLAG_EPHEMERAL },
-        }),
-      },
-    );
+    await fetch(`${DISCORD_API}/interactions/${interactionId}/${interactionToken}/callback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 4,
+        data: { content, flags: FLAG_EPHEMERAL },
+      }),
+    });
   } catch (err) {
     log.warn('Failed to send ephemeral response', {
       err: (err as Error).message,
@@ -630,23 +566,17 @@ function readComposioEnv(): { apiKey: string; userId: string } {
  * Returns null if the toolkit has no Composio-managed auth_config in this
  * project (e.g. `googleforms` — Composio doesn't manage credentials for it).
  */
-async function resolveAuthConfigId(
-  toolkit: string,
-  apiKey: string,
-): Promise<string | null> {
+async function resolveAuthConfigId(toolkit: string, apiKey: string): Promise<string | null> {
   if (!_authConfigCache) {
     _authConfigCache = new Map();
     try {
-      const r = await fetch(
-        'https://backend.composio.dev/api/v3/auth_configs?limit=200',
-        { headers: { 'x-api-key': apiKey } },
-      );
+      const r = await fetch('https://backend.composio.dev/api/v3/auth_configs?limit=200', {
+        headers: { 'x-api-key': apiKey },
+      });
       if (r.ok) {
         const j = (await r.json()) as { items?: Array<Record<string, unknown>> };
         for (const item of j.items ?? []) {
-          const slug = (item.toolkit as Record<string, unknown> | undefined)?.slug as
-            | string
-            | undefined;
+          const slug = (item.toolkit as Record<string, unknown> | undefined)?.slug as string | undefined;
           const id = item.id as string | undefined;
           if (slug && id) _authConfigCache.set(slug, id);
         }
@@ -670,9 +600,7 @@ async function resolveAuthConfigId(
  * bridges that read the same file.
  */
 function readEnvFile(): Record<string, string> {
-  const envPath =
-    process.env.STUDENT_ASSISTANT_ENV_PATH ||
-    path.join(os.homedir(), 'student-assistant', '.env');
+  const envPath = process.env.STUDENT_ASSISTANT_ENV_PATH || path.join(os.homedir(), 'student-assistant', '.env');
   let raw: string;
   try {
     raw = fs.readFileSync(envPath, 'utf8');
@@ -697,9 +625,7 @@ function readChatCSEEnv(): { token: string; baseUrl: string } {
   const env = readEnvFile();
   const token = env.CHATCSE_AGENT_TOKEN;
   const baseUrl =
-    env.CHATCSE_BASE_URL ||
-    env.VIRTUAL_TA_URL?.replace(/:8001$/, ':8000') ||
-    'http://host.docker.internal:8000';
+    env.CHATCSE_BASE_URL || env.VIRTUAL_TA_URL?.replace(/:8001$/, ':8000') || 'http://host.docker.internal:8000';
   if (!token) throw new Error('CHATCSE_AGENT_TOKEN missing');
   return { token, baseUrl };
 }

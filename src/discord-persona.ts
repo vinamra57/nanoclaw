@@ -107,20 +107,13 @@ async function discordApi<T>(
   }
 }
 
-async function findOrCreateWebhook(
-  channelId: string,
-  botToken: string,
-): Promise<WebhookCred | null> {
+async function findOrCreateWebhook(channelId: string, botToken: string): Promise<WebhookCred | null> {
   const cached = webhookCache.get(channelId);
   if (cached) return cached;
   if (isNegativelyCached(channelId)) return null;
 
   // Look for an existing one we own.
-  const existing = await discordApi<DiscordWebhook[]>(
-    `/channels/${channelId}/webhooks`,
-    { method: 'GET' },
-    botToken,
-  );
+  const existing = await discordApi<DiscordWebhook[]>(`/channels/${channelId}/webhooks`, { method: 'GET' }, botToken);
   if (Array.isArray(existing)) {
     for (const wh of existing) {
       if (wh.name === WEBHOOK_NAME && wh.token) {
@@ -163,9 +156,7 @@ export interface PersonaSendInput {
 /** Send a message through a channel webhook. Returns the platform message
  *  id on success, or null if the webhook path was unavailable (caller
  *  should fall back to the regular bot send). */
-export async function deliverViaWebhook(
-  input: PersonaSendInput,
-): Promise<string | null> {
+export async function deliverViaWebhook(input: PersonaSendInput): Promise<string | null> {
   const botToken = (process.env.DISCORD_BOT_TOKEN || '').trim();
   if (!botToken) return null;
 

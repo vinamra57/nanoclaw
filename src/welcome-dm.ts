@@ -25,7 +25,7 @@ function welcomeText(name: string): string {
   return [
     `Hi ${name}! I'm your Studentclaw agent.`,
     '',
-    "I can help with your courses: ask me about lectures, search Ed/Canvas/Gradescope, look at your GitHub repos, and more. Try asking me anything course-related to get started.",
+    'I can help with your courses: ask me about lectures, search Ed/Canvas/Gradescope, look at your GitHub repos, and more. Try asking me anything course-related to get started.',
   ].join('\n');
 }
 

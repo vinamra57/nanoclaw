@@ -219,9 +219,7 @@ async function main(): Promise<void> {
           const parsed = JSON.parse(content) as { text?: string };
           const text = parsed.text;
           if (text) {
-            const { getMessagingGroupByPlatform } = await import(
-              './db/messaging-groups.js'
-            );
+            const { getMessagingGroupByPlatform } = await import('./db/messaging-groups.js');
             const { getAgentGroup } = await import('./db/agent-groups.js');
             const { deliverViaWebhook } = await import('./discord-persona.js');
             const mg = getMessagingGroupByPlatform('discord', platformId);
@@ -230,9 +228,7 @@ async function main(): Promise<void> {
               // Multi-agent channels use the first wired agent's name —
               // good enough; per-message persona resolution would need
               // session context that this layer doesn't have.
-              const { getMessagingGroupAgents } = await import(
-                './db/messaging-groups.js'
-              );
+              const { getMessagingGroupAgents } = await import('./db/messaging-groups.js');
               const agents = getMessagingGroupAgents(mg.id);
               const ag = agents.length > 0 ? getAgentGroup(agents[0].agent_group_id) : null;
               if (ag?.name) {

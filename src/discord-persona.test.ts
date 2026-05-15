@@ -26,9 +26,7 @@ afterEach(() => {
   delete process.env.DISCORD_BOT_TOKEN;
 });
 
-function mockFetchSequence(
-  responses: Array<{ status: number; json?: unknown; text?: string }>,
-): {
+function mockFetchSequence(responses: Array<{ status: number; json?: unknown; text?: string }>): {
   fetchMock: ReturnType<typeof vi.fn>;
   calls: Array<{ url: string; init: RequestInit | undefined }>;
 } {
@@ -37,10 +35,10 @@ function mockFetchSequence(
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     calls.push({ url, init });
     const r = responses[i++] ?? { status: 500 };
-    return new Response(
-      r.json !== undefined ? JSON.stringify(r.json) : (r.text ?? ''),
-      { status: r.status, headers: { 'Content-Type': 'application/json' } },
-    );
+    return new Response(r.json !== undefined ? JSON.stringify(r.json) : (r.text ?? ''), {
+      status: r.status,
+      headers: { 'Content-Type': 'application/json' },
+    });
   });
   global.fetch = fetchMock as unknown as typeof fetch;
   return { fetchMock, calls };
@@ -84,9 +82,7 @@ describe('deliverViaWebhook', () => {
     expect(calls[2].url).toContain('/webhooks/wh-1/wht-1');
 
     // Auth header carries Bot prefix.
-    const auth = (calls[0].init?.headers as Record<string, string>)?.[
-      'Authorization'
-    ];
+    const auth = (calls[0].init?.headers as Record<string, string>)?.['Authorization'];
     expect(auth).toBe('Bot test-bot-token');
   });
 
@@ -95,9 +91,7 @@ describe('deliverViaWebhook', () => {
       // 1. list webhooks → returns ours
       {
         status: 200,
-        json: [
-          { id: 'wh-existing', token: 'wht-existing', name: 'NanoClaw Persona' },
-        ],
+        json: [{ id: 'wh-existing', token: 'wht-existing', name: 'NanoClaw Persona' }],
       },
       // 2. execute webhook
       { status: 200, json: { id: 'msg-2' } },
@@ -200,9 +194,7 @@ describe('deliverViaWebhook', () => {
       threadId: null,
       text: 'see attached',
       username: 'persona',
-      files: [
-        { name: 'slide.png', data: Buffer.from('fake-png-bytes') },
-      ],
+      files: [{ name: 'slide.png', data: Buffer.from('fake-png-bytes') }],
     });
     expect(id).toBe('msg-with-file');
     // Multipart bodies are FormData — the init.body for the execute call
