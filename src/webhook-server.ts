@@ -12,6 +12,7 @@ import http from 'http';
 import type { Chat } from 'chat';
 
 import { handleControlRequest } from './control-api.js';
+import { readEnvFile } from './env.js';
 import { log } from './log.js';
 
 const DEFAULT_PORT = 3000;
@@ -90,7 +91,11 @@ export function ensureHttpServer(): void {
 function startServer(): void {
   if (server) return;
 
-  const port = parseInt(process.env.WEBHOOK_PORT || String(DEFAULT_PORT), 10);
+  // readEnvFile() doesn't populate process.env (by design — see env.ts), so
+  // we have to re-read here for the values to make it from .env into the
+  // server config. Falls back to process.env so shell-exports still win.
+  const envFile = readEnvFile(['WEBHOOK_PORT']);
+  const port = parseInt(envFile.WEBHOOK_PORT || process.env.WEBHOOK_PORT || String(DEFAULT_PORT), 10);
 
   server = http.createServer(async (req, res) => {
     const url = req.url || '/';

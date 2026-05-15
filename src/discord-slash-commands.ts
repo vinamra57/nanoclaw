@@ -43,13 +43,14 @@ const DISCORD_API = 'https://discord.com/api/v10';
  * Slug of the provider this slash command targets. Aligned with the
  * server-side `ALLOWED_PROVIDERS` set in ChatCSE's `provider_credentials.py`.
  */
-type Provider = 'edstem' | 'canvas' | 'gradescope';
-const PROVIDERS: Provider[] = ['edstem', 'canvas', 'gradescope'];
+type Provider = 'edstem' | 'canvas' | 'gradescope' | 'github';
+const PROVIDERS: Provider[] = ['edstem', 'canvas', 'gradescope', 'github'];
 
 const COMMAND_NAME: Record<Provider, string> = {
   edstem: 'edstem-key',
   canvas: 'canvas-key',
   gradescope: 'gradescope-key',
+  github: 'github-key',
 };
 
 const COMMAND_DESCRIPTION: Record<Provider, string> = {
@@ -57,18 +58,21 @@ const COMMAND_DESCRIPTION: Record<Provider, string> = {
   canvas: 'Save your Canvas API token (entered in a private prompt)',
   gradescope:
     'Save your Gradescope local password (entered in a private prompt) — see /docs for the SSO setup',
+  github: 'Save your GitHub personal access token (entered in a private prompt)',
 };
 
 const MODAL_LABEL: Record<Provider, string> = {
   edstem: 'Edstem API token',
   canvas: 'Canvas API token',
   gradescope: 'Gradescope email:password',
+  github: 'GitHub personal access token',
 };
 
 const MODAL_PLACEHOLDER: Record<Provider, string> = {
   edstem: 'paste the token from edstem.org/us/settings/api-tokens',
   canvas: 'paste the token from Canvas → Account → Settings',
   gradescope: 'youremail@school.edu:your-gradescope-local-password',
+  github: 'ghp_… — create at github.com/settings/tokens with repo scope',
 };
 
 const MODAL_CUSTOM_ID_PREFIX = 'pkey:';

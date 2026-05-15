@@ -16,7 +16,10 @@ import path from 'path';
 import { DATA_DIR } from '../src/config.js';
 
 const SILENCE_MS = 2000; // exit after this much quiet time following the first reply
-const TOTAL_TIMEOUT_MS = 120_000; // hard stop
+// Long enough to cover the Virtual TA's full protocol — ask_question can
+// take ~90s on Haiku, then get_playback + curl downloads + N send_file
+// for the slide images. Hardcoded 120s was clipping responses mid-flight.
+const TOTAL_TIMEOUT_MS = 600_000;
 
 function socketPath(): string {
   return path.join(DATA_DIR, 'cli.sock');

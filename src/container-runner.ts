@@ -160,10 +160,13 @@ async function spawnContainer(session: Session): Promise<void> {
   activeContainers.set(session.id, { process: container, containerName });
   markContainerRunning(session.id);
 
-  // Log stderr
+  // Log stderr at info level — the agent-runner emits useful status lines
+  // ("Starting v2 agent-runner", "Additional MCP server: X", tool errors)
+  // on stderr; debug-level would hide them unless someone flips the global
+  // log level, which is exactly when you don't want to be searching for it.
   container.stderr?.on('data', (data) => {
     for (const line of data.toString().trim().split('\n')) {
-      if (line) log.debug(line, { container: agentGroup.folder });
+      if (line) log.info(line, { container: agentGroup.folder });
     }
   });
 

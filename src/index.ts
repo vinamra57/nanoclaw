@@ -16,6 +16,7 @@ import { startActiveDeliveryPoll, startSweepDeliveryPoll, setDeliveryAdapter, st
 import { startHostSweep, stopHostSweep } from './host-sweep.js';
 import { routeInbound } from './router.js';
 import { log } from './log.js';
+import { ensureHttpServer } from './webhook-server.js';
 
 // Response + shutdown registries live in response-registry.ts to break the
 // circular import cycle: src/index.ts imports src/modules/index.js for side
@@ -121,6 +122,11 @@ async function main(): Promise<void> {
   // 2. Container runtime
   ensureContainerRuntimeRunning();
   cleanupOrphans();
+
+  // 2b. Control-plane HTTP server. Bind regardless of adapter type so the
+  // POST /api/agent-groups/wirings endpoint is reachable in pure-Gateway
+  // deployments (Discord) where no webhook adapter would otherwise start it.
+  ensureHttpServer();
 
   // 3. Channel adapters
   await initChannelAdapters((adapter: ChannelAdapter): ChannelSetup => {

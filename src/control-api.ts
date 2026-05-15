@@ -56,8 +56,10 @@ import {
   getMessagingGroupAgentByPair,
   getMessagingGroupByPlatform,
 } from './db/messaging-groups.js';
+import { readEnvFile } from './env.js';
 import { initGroupFilesystem } from './group-init.js';
 import { log } from './log.js';
+import { scheduleWelcomeDM } from './welcome-dm.js';
 import type {
   AgentGroup,
   EngageMode,
@@ -351,11 +353,37 @@ async function handleCreateAgentGroup(req: Request): Promise<Response> {
   });
 }
 
+async function handleWelcomeDM(req: Request): Promise<Response> {
+  let body: { channel_type?: string; user_id?: string; name?: string };
+  try {
+    body = (await req.json()) as {
+      channel_type?: string;
+      user_id?: string;
+      name?: string;
+    };
+  } catch {
+    return badRequest('invalid JSON body');
+  }
+  if (body.channel_type !== 'discord') {
+    return badRequest('only channel_type=discord is supported today');
+  }
+  if (!body.user_id || !body.name) {
+    return badRequest('user_id and name are required');
+  }
+  // Fire-and-forget; the retry loop owns the 403-until-mutual-guild window.
+  scheduleWelcomeDM(body.user_id, body.name);
+  return ok({ scheduled: true });
+}
+
+
 export async function handleControlRequest(req: Request): Promise<Response | null> {
   const url = new URL(req.url);
   if (!url.pathname.startsWith('/api/')) return null;
 
-  const expected = (process.env.NANOCLAW_CONTROL_TOKEN || '').trim();
+  // readEnvFile() doesn't populate process.env, so read .env directly here.
+  // process.env still wins so a shell export overrides .env (deploy/ops).
+  const envFile = readEnvFile(['NANOCLAW_CONTROL_TOKEN']);
+  const expected = (process.env.NANOCLAW_CONTROL_TOKEN || envFile.NANOCLAW_CONTROL_TOKEN || '').trim();
   if (!expected) {
     return new Response(JSON.stringify({ error: 'control plane disabled' }), {
       status: 503,
@@ -371,6 +399,9 @@ export async function handleControlRequest(req: Request): Promise<Response | nul
   }
   if (url.pathname === '/api/agent-groups/wirings' && req.method === 'POST') {
     return handleAgentGroupWiring(req);
+  }
+  if (url.pathname === '/api/dm/welcome' && req.method === 'POST') {
+    return handleWelcomeDM(req);
   }
 
   return new Response(JSON.stringify({ error: 'unknown control endpoint' }), {
