@@ -52,6 +52,7 @@ import {
   getMessagingGroupAgentByPair,
   getMessagingGroupByPlatform,
 } from './db/messaging-groups.js';
+import { normalizeDiscordPlatformId } from './discord-platform-id.js';
 import { readEnvFile } from './env.js';
 import { initGroupFilesystem } from './group-init.js';
 import { log } from './log.js';
@@ -147,7 +148,10 @@ async function handleAgentGroupWiring(req: Request): Promise<Response> {
   if (!isNonEmptyString(body.agent_group_id)) return badRequest('agent_group_id is required');
 
   const channelType = body.channel_type;
-  const platformId = body.platform_id;
+  // For Discord DMs callers pass `@me:<user_id>` (the only thing OAuth
+  // surfaces). The adapter's inbound routing keys on
+  // `discord:@me:<dm_channel_id>` — rewrite here so the wiring matches.
+  const platformId = await normalizeDiscordPlatformId(channelType, body.platform_id);
   const agentGroupId = body.agent_group_id;
 
   // Optional fields with defaults that match the most common student-DM
