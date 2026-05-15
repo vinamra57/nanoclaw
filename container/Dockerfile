@@ -90,12 +90,12 @@ RUN --mount=type=cache,target=/root/.bun/install/cache \
 #     binary (linux-arm64 variant on our image). Without the allowlist
 #     the SDK fails at spawn time with "native binary not found".
 ENV PNPM_HOME="/pnpm"
-ENV PATH="$PNPM_HOME:$PATH"
-# pnpm 10+ refuses `install -g` until PNPM_HOME exists as a writable dir
-# (older pnpm auto-created it; new versions defer to `pnpm setup` and
-# fail with a "Run pnpm setup" hint otherwise). Pre-creating the dir
-# avoids needing to run an interactive setup step inside the image.
-RUN corepack enable && mkdir -p "$PNPM_HOME"
+# pnpm puts its global-installed binaries under $PNPM_HOME/bin — that's
+# the dir that needs to be on PATH (not $PNPM_HOME itself, which holds
+# the package store). Both pre-created so `install -g` doesn't fail on
+# the "Run pnpm setup" check.
+ENV PATH="$PNPM_HOME/bin:$PNPM_HOME:$PATH"
+RUN corepack enable && mkdir -p "$PNPM_HOME/bin"
 
 RUN --mount=type=cache,target=/root/.cache/pnpm \
     echo "only-built-dependencies[]=agent-browser" > /root/.npmrc && \
