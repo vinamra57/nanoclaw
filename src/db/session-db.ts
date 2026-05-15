@@ -5,6 +5,9 @@
  * shared between host and container. Callers own the connection lifecycle
  * (open-write-close per op). See session-manager.ts header for invariants.
  */
+import fs from 'fs';
+import path from 'path';
+
 import Database from 'better-sqlite3';
 
 import { INBOUND_SCHEMA, OUTBOUND_SCHEMA } from './schema.js';
@@ -19,6 +22,15 @@ export function ensureSchema(dbPath: string, schema: 'inbound' | 'outbound'): vo
 
 /** Open the inbound DB for a session (host reads/writes). */
 export function openInboundDb(dbPath: string): Database.Database {
+  // Ensure the session directory exists. better-sqlite3 errors out
+  // with "Cannot open database because the directory does not exist"
+  // if the parent dir is missing — this can happen when a session row
+  // is materialized in v2.db before the matching v2-sessions/<id>/
+  // directory is created on disk.
+  const dir = path.dirname(dbPath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
   const db = new Database(dbPath);
   db.pragma('journal_mode = DELETE');
   db.pragma('busy_timeout = 5000');

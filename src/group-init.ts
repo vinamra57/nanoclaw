@@ -60,6 +60,31 @@ export function initGroupFilesystem(group: AgentGroup, opts?: { instructions?: s
     initialized.push('container.json');
   }
 
+  // groups/<folder>/<provider>-bridge/ — stdio→HTTP bridges the agent
+  // container needs to talk to host MCP servers. The bridges are static
+  // code shared across every student; we keep canonical copies under
+  // STUDENTCLAW_BRIDGES_DIR (default: ../mcp_servers in the parent
+  // studentclaw repo) and copy them into each new agent_group folder so
+  // the per-student container.json's `/workspace/agent/<bridge>/bridge.mjs`
+  // paths resolve correctly. Skipped if a bridge dir already exists
+  // (idempotent on re-runs).
+  const bridgesSrc = process.env.STUDENTCLAW_BRIDGES_DIR
+    || path.resolve(GROUPS_DIR, '..', '..', 'mcp_servers');
+  if (fs.existsSync(bridgesSrc)) {
+    const entries = fs.readdirSync(bridgesSrc, { withFileTypes: true });
+    for (const e of entries) {
+      if (!e.isDirectory() || !e.name.endsWith('-bridge')) continue;
+      const dst = path.join(groupDir, e.name);
+      if (fs.existsSync(dst)) continue;
+      fs.cpSync(path.join(bridgesSrc, e.name), dst, { recursive: true });
+      initialized.push(e.name);
+    }
+  } else {
+    log.warn('STUDENTCLAW_BRIDGES_DIR not found; agent container will lack MCP bridges', {
+      tried: bridgesSrc,
+    });
+  }
+
   // 2. data/v2-sessions/<id>/.claude-shared/ — Claude state + per-group skills
   const claudeDir = path.join(DATA_DIR, 'v2-sessions', group.id, '.claude-shared');
   if (!fs.existsSync(claudeDir)) {

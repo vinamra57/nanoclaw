@@ -134,34 +134,51 @@ export const sendMessage: McpToolDefinition = {
 export const sendFile: McpToolDefinition = {
   tool: {
     name: 'send_file',
-    description: 'Send a file to a named destination. If you have only one destination, you can omit `to`.',
+    description:
+      'Send one or more files to a named destination in a SINGLE message. Prefer `paths` (array) when you have multiple files — they arrive together as one message with multiple attachments, much faster than calling send_file separately for each file. Discord allows up to 10 attachments per message.',
     inputSchema: {
       type: 'object' as const,
       properties: {
         to: { type: 'string', description: 'Destination name. Optional if you have only one destination.' },
-        path: { type: 'string', description: 'File path (relative to /workspace/agent/ or absolute)' },
+        path: { type: 'string', description: 'Single file path (relative to /workspace/agent/ or absolute). Use `paths` for multi-file.' },
+        paths: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Multiple file paths. All sent in ONE message with multiple attachments — much faster than serial send_file calls.',
+        },
         text: { type: 'string', description: 'Optional accompanying message' },
-        filename: { type: 'string', description: 'Display name (default: basename of path)' },
+        filename: { type: 'string', description: 'Display name (default: basename of path). Only honored for single-file calls.' },
       },
-      required: ['path'],
     },
   },
   async handler(args) {
-    const filePath = args.path as string;
-    if (!filePath) return err('path is required');
+    // Accept either `path` (single, legacy) or `paths` (array, new). Normalize.
+    const pathList: string[] = Array.isArray(args.paths)
+      ? (args.paths as string[])
+      : args.path
+        ? [args.path as string]
+        : [];
+    if (pathList.length === 0) return err('path or paths is required');
 
     const routing = resolveRouting(args.to as string | undefined);
     if ('error' in routing) return err(routing.error);
 
-    const resolvedPath = path.isAbsolute(filePath) ? filePath : path.resolve('/workspace/agent', filePath);
-    if (!fs.existsSync(resolvedPath)) return err(`File not found: ${filePath}`);
-
     const id = generateId();
-    const filename = (args.filename as string) || path.basename(resolvedPath);
-
     const outboxDir = path.join('/workspace/outbox', id);
     fs.mkdirSync(outboxDir, { recursive: true });
-    fs.copyFileSync(resolvedPath, path.join(outboxDir, filename));
+
+    const filenames: string[] = [];
+    for (const filePath of pathList) {
+      const resolvedPath = path.isAbsolute(filePath) ? filePath : path.resolve('/workspace/agent', filePath);
+      if (!fs.existsSync(resolvedPath)) return err(`File not found: ${filePath}`);
+      // `filename` override only applies when sending a single file — for
+      // multi-file we keep each file's basename to avoid N files colliding
+      // on the same display name.
+      const filename =
+        pathList.length === 1 ? (args.filename as string) || path.basename(resolvedPath) : path.basename(resolvedPath);
+      fs.copyFileSync(resolvedPath, path.join(outboxDir, filename));
+      filenames.push(filename);
+    }
 
     writeMessageOut({
       id,
@@ -169,11 +186,11 @@ export const sendFile: McpToolDefinition = {
       platform_id: routing.platform_id,
       channel_type: routing.channel_type,
       thread_id: routing.thread_id,
-      content: JSON.stringify({ text: (args.text as string) || '', files: [filename] }),
+      content: JSON.stringify({ text: (args.text as string) || '', files: filenames }),
     });
 
-    log(`send_file: ${id} → ${routing.resolvedName} (${filename})`);
-    return ok(`File sent to ${routing.resolvedName} (id: ${id}, filename: ${filename})`);
+    log(`send_file: ${id} → ${routing.resolvedName} (${filenames.length} file(s): ${filenames.join(', ')})`);
+    return ok(`${filenames.length} file(s) sent to ${routing.resolvedName} (id: ${id})`);
   },
 };
 

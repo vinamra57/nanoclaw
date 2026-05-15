@@ -272,9 +272,36 @@ async function handleCreateAgentGroup(req: Request): Promise<Response> {
     return badRequest('folder name resolved to empty after normalization');
   }
 
-  // Idempotency: if a row already has this folder, return its id.
+  // Idempotency: if a row already has this folder, return its id — but
+  // ALSO refresh container.json with the new container_config if the
+  // caller supplied one. Without this refresh, re-spawn issues a new
+  // agent_token in ChatCSE but the on-disk container.json still has the
+  // old token baked in → MCP auth fails with 401 on the next message.
   const existing = getAgentGroupByFolder(requestedFolder);
   if (existing) {
+    if (
+      body.container_config !== undefined &&
+      typeof body.container_config === 'object' &&
+      body.container_config !== null
+    ) {
+      const existingPath = path.resolve(path.join(GROUPS_DIR, existing.folder));
+      const containerJsonPath = path.join(existingPath, 'container.json');
+      try {
+        fs.writeFileSync(
+          containerJsonPath,
+          JSON.stringify(body.container_config, null, 2) + '\n',
+        );
+        log.info('Control API: refreshed container.json on existing agent_group', {
+          agentGroupId: existing.id,
+          folder: existing.folder,
+        });
+      } catch (err) {
+        log.error('Control API: failed to refresh container.json', {
+          agentGroupId: existing.id,
+          err: String(err),
+        });
+      }
+    }
     return ok({
       agent_group_id: existing.id,
       folder: existing.folder,
