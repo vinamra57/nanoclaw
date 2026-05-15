@@ -68,8 +68,7 @@ export function initGroupFilesystem(group: AgentGroup, opts?: { instructions?: s
   // the per-student container.json's `/workspace/agent/<bridge>/bridge.mjs`
   // paths resolve correctly. Skipped if a bridge dir already exists
   // (idempotent on re-runs).
-  const bridgesSrc = process.env.STUDENTCLAW_BRIDGES_DIR
-    || path.resolve(GROUPS_DIR, '..', '..', 'mcp_servers');
+  const bridgesSrc = process.env.STUDENTCLAW_BRIDGES_DIR || path.resolve(GROUPS_DIR, '..', '..', 'mcp_servers');
   if (fs.existsSync(bridgesSrc)) {
     const entries = fs.readdirSync(bridgesSrc, { withFileTypes: true });
     for (const e of entries) {

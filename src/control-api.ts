@@ -287,10 +287,7 @@ async function handleCreateAgentGroup(req: Request): Promise<Response> {
       const existingPath = path.resolve(path.join(GROUPS_DIR, existing.folder));
       const containerJsonPath = path.join(existingPath, 'container.json');
       try {
-        fs.writeFileSync(
-          containerJsonPath,
-          JSON.stringify(body.container_config, null, 2) + '\n',
-        );
+        fs.writeFileSync(containerJsonPath, JSON.stringify(body.container_config, null, 2) + '\n');
         log.info('Control API: refreshed container.json on existing agent_group', {
           agentGroupId: existing.id,
           folder: existing.folder,
